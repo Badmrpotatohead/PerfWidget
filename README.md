@@ -1,8 +1,25 @@
 # PerfWidget
 
-An always-on-top Windows widget that answers "what is hammering my machine?" at the level of **apps**, not processes.
+An always-on-top widget for Windows, macOS and Linux that answers "what is hammering my machine?" at the level of **apps**, not processes.
 
 ![widget](screenshot.png) ![alert](screenshot-alert.png)
+
+## Platforms
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| App | WPF build (`src/PerfWidget.Wpf`) | `PerfWidget.app`, menu-bar icon, no Dock icon (`src/PerfWidget.App`) | `PerfWidget` binary, tray icon where the desktop has one (`src/PerfWidget.App`) |
+| Per-app RAM | private working set | memory footprint (Activity Monitor's "Memory") | private RSS (+ swap) |
+| Per-app I/O | all I/O incl. network/pipes | real disk I/O | real disk I/O (own processes) |
+| Per-app GPU | yes | no (macOS doesn't expose it) | no |
+| Memory alerts | RAM %, commit, page-file swapping | kernel memory-pressure level, swapping | RAM %, PSI memory stalls, swapping |
+| CPU heat | temp via LibreHardwareMonitor; firmware throttling | thermal state (throttling / critical) | hwmon temperature (k10temp, coretemp…) |
+| GPU details | NVIDIA via NVML | utilization + GPU memory (IOKit) | NVIDIA via NVML, AMD via sysfs |
+| Data folder | `%APPDATA%\PerfWidget` | `~/Library/Application Support/PerfWidget` | `~/.local/share/PerfWidget` |
+
+On macOS, apps running as root or as another user (kernel_task, WindowServer, Spotlight) are listed with zero CPU and RAM unless PerfWidget runs as root. Machine totals are always right.
+
+Layout: `src/PerfWidget.Core` is shared and holds the collector, grouping, alerts, history and live feed. Under it, `Windows/`, `Mac/` and `Linux/` hold the OS samplers behind `IPlatform`.
 
 ## Reading it
 
@@ -83,7 +100,8 @@ An always-on-top Windows widget that answers "what is hammering my machine?" at 
   - `...\Orbit\node_modules\electron\electron.exe` → **Orbit**
   - `node ...\server.js` → **server.js (node)**
   - `python train.py` → **train.py (python)**
-- Aliases live in `Collector.cs → BuildAliases()`; add a line to rename or merge an app.
+- On macOS, everything inside one `.app` bundle is one app. XPC helpers launched by launchd join the app responsible for them.
+- Aliases live in each sampler's rules: `Windows/WindowsPlatform.cs → BuildRules()`, `Mac/MacPlatform.cs` and `Linux/LinuxRules.cs`. Add a line to rename or merge an app.
 
 ## Notes
 
@@ -104,9 +122,20 @@ An always-on-top Windows widget that answers "what is hammering my machine?" at 
 
 ## Build
 
+Windows (WPF):
+
 ```bash
-dotnet publish -c Release -o dist -p:PublishSingleFile=true -p:DebugType=none
+dotnet publish src/PerfWidget.Wpf/PerfWidget.Wpf.csproj -c Release -o dist -p:PublishSingleFile=true -p:DebugType=none
 ```
 
-Output: `dist\PerfWidget.exe` (needs the .NET 10 desktop runtime).
-Settings: `%APPDATA%\PerfWidget\settings.json`. Errors: `%APPDATA%\PerfWidget\error.log`.
+macOS / Linux, self-contained (no .NET install needed). Use `osx-arm64`, `osx-x64` or `linux-x64`:
+
+```bash
+dotnet publish src/PerfWidget.App/PerfWidget.App.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out
+```
+
+Then `scripts/make-mac-app.sh out PerfWidget.zip` wraps it as `PerfWidget.app`. It's ad-hoc signed, not notarized.
+
+CI (`.github/workflows/ci.yml`) builds on Windows, macOS and Ubuntu. On each it starts a single-core CPU hog and takes a live `--json` snapshot, then `scripts/check-snapshot.ps1` checks the numbers are real and the hog is found. It also packages all four builds.
+
+Settings and errors live in the data folder above, as `settings.json` and `error.log`.

@@ -42,3 +42,20 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - The widget now rewrites %APPDATA%\PerfWidget\live.json every 2 s, replacing the whole file at once. Schema v1 covers the verdict, issues, cpu, memory, gpu, disks, drives, the top 20 apps, and the exe path.
 - New `--json <file>` one-shot mode. Verified on this machine: real values, refreshes every 2 s.
 - The Orbit side was queued through Orbit's own queue as orbit #8543, on the Windows node, because the default node is the Mac, where the feed doesn't exist. It covers a reader module, /api/machine-health, the orbit_machine_health MCP tool and a Diagnostics "Machine" panel. It is optional and does nothing when PerfWidget is absent. As of logging it is pending Orbit's AI review and approval; not built yet.
+
+## PROMPT #4 — macOS and Linux versions
+**Status:** ⚠️ Partial (built; not yet run on a real Mac or Linux machine)
+**Date:** 2026-11-16
+**Commit:** 0e792cd, 7e64d13, a788888, f10d901
+**Files changed:** src/PerfWidget.Core/* (new shared core + Windows/Mac/Linux samplers), src/PerfWidget.Wpf/* (moved), src/PerfWidget.App/* (new Avalonia app), .github/workflows/ci.yml, scripts/check-snapshot.ps1, scripts/make-mac-app.sh, .gitattributes, README.md
+**Notes:**
+- Split into a shared Core (collector, grouping, alerts, history, live feed) plus an IPlatform sampler per OS.
+- Windows behaviour is unchanged. Checked by a dump, a screenshot, and the live feed after the refactor.
+- The macOS and Linux samplers were written by two Opus subagents. Both build cleanly. They were checked on Windows only:
+  - macOS: the self-test (argument parser, bundle-name parser, struct sizes and offsets) passes, and grouping was simulated.
+  - Linux: 128 harness checks pass, against a fake /proc and /sys plus the parsers.
+- The Avalonia UI was verified on Windows. It matches the WPF layout at about 0.3% CPU.
+- CI (Windows/macOS/Ubuntu live sample with a CPU hog, plus packaging) is written, and its checker passes locally on Windows. It has NOT run: creating the private GitHub repo was blocked by the permission classifier, so it is waiting for the user's OK.
+- macOS limits: no per-app GPU; no CPU temperature or clock on Apple Silicon; processes run by root or other users show zero CPU and RAM without root.
+- Linux could not be tested locally, because virtualization is disabled in this PC's firmware so WSL won't start.
+- Orbit: an amendment to the running #8543 was not delivered (agent disconnected). Queued follow-up orbit #8544 (depends on #8543) so Orbit reads the macOS and Linux feed paths and fields. It is pending review and approval.
