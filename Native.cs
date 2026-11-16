@@ -59,6 +59,52 @@ static class Native
         finally { CloseHandle(h); }
     }
 
+    [DllImport("ntdll.dll")]
+    static extern uint NtQueryInformationProcess(IntPtr h, int cls, IntPtr buf, int len, out int ret);
+
+    /// <summary>Full command line of another process (ProcessCommandLineInformation, no admin needed).</summary>
+    public static string? CommandLine(int pid)
+    {
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            int len = 4096;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                IntPtr b = Marshal.AllocHGlobal(len);
+                try
+                {
+                    uint st = NtQueryInformationProcess(h, 60, b, len, out int ret);
+                    if (st == 0)
+                    {
+                        int l = (ushort)Marshal.ReadInt16(b, 0);
+                        IntPtr p = Marshal.ReadIntPtr(b, 8);
+                        return p == IntPtr.Zero || l == 0 ? null : Marshal.PtrToStringUni(p, l / 2);
+                    }
+                    if (st is 0xC0000004 or 0x80000005 or 0xC0000023) { len = Math.Max(ret + 64, len * 2); continue; }
+                    return null;
+                }
+                finally { Marshal.FreeHGlobal(b); }
+            }
+            return null;
+        }
+        finally { CloseHandle(h); }
+    }
+
+    // ---------------- NVML (ships with the NVIDIA driver) ----------------
+    [DllImport("nvml.dll")] public static extern int nvmlInit_v2();
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetHandleByIndex_v2(uint i, out IntPtr dev);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetTemperature(IntPtr d, int sensor, out uint t);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetTemperatureThreshold(IntPtr d, int type, out uint t);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetPowerUsage(IntPtr d, out uint mw);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetEnforcedPowerLimit(IntPtr d, out uint mw);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetClockInfo(IntPtr d, int type, out uint mhz);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetMaxClockInfo(IntPtr d, int type, out uint mhz);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetFanSpeed(IntPtr d, out uint pct);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetCurrentClocksEventReasons(IntPtr d, out ulong r);
+    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetCurrentClocksThrottleReasons(IntPtr d, out ulong r);
+
     // ---------------- PDH ----------------
     [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
     public static extern uint PdhOpenQuery(string? src, IntPtr user, out IntPtr q);

@@ -28,6 +28,17 @@ public partial class App : Application
             return;
         }
 
+        int hist = Array.IndexOf(e.Args, "--history");
+        if (hist >= 0)
+        {
+            // PerfWidget.exe --history [minutes=60] [outfile]
+            double mins = hist + 1 < e.Args.Length && double.TryParse(e.Args[hist + 1], out var m) ? m : 60;
+            string path = hist + 2 < e.Args.Length ? e.Args[hist + 2] : "perfwidget-history.txt";
+            File.WriteAllText(path, HistoryLog.Summary(DateTime.Now.AddMinutes(-mins), DateTime.Now));
+            Shutdown();
+            return;
+        }
+
         mutex = new Mutex(true, @"Local\PerfWidget.SingleInstance", out bool created);
         if (!created) { Shutdown(); return; }
         new MainWindow().Show();
@@ -41,7 +52,7 @@ sealed class Settings
     public bool Compact { get; set; }
     public bool Topmost { get; set; } = true;
     public double Opacity { get; set; } = 1.0;
-    public int Rows { get; set; } = 8;
+    public int AppRows { get; set; } = 5;
 
     static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PerfWidget");
     static string FilePath => Path.Combine(Dir, "settings.json");

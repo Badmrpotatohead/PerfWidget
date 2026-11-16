@@ -16,7 +16,11 @@ sealed class ProcInfo
     public uint HardFaults;
     public string Name = "", LName = "";
     public double CpuPct, IoBps, HardFaultsPs, GpuPct;
+    /// <summary>Busiest single thread, as % of one core.</summary>
+    public double MaxThreadPct;
     public long Vram;
+    public string? CommandLine;
+    public string Summary = "";
     public ProcInfo? Parent;
 }
 
@@ -24,14 +28,18 @@ sealed class AppGroup
 {
     public string Key = "", Name = "";
     public readonly List<ProcInfo> Members = new();
-    public double CpuPct, IoBps, HardFaultsPs, GpuPct;
+    public double CpuPct, IoBps, HardFaultsPs, GpuPct, MaxThreadPct;
+    public string MaxThreadProc = "";
     public long Ram, Commit, Vram;
 }
 
 sealed record DiskStat(string Name, double BusyPct, double Bps);
 sealed record DriveStat(string Name, long Free, long Total, bool HasPagefile);
 /// <summary>Severity: 2 = warning, 3 = critical. Resource: cpu, ram, commit, gpu, vram, disk, drive.</summary>
-sealed record Issue(int Severity, string Resource, string Text);
+sealed record Issue(int Severity, string Resource, string Title, string Detail)
+{
+    public string Text => Detail.Length > 0 ? $"{Title}: {Detail}" : Title;
+}
 
 sealed class Snapshot
 {
@@ -50,6 +58,13 @@ sealed class Snapshot
     public string Bottleneck = "none";
     public double SelfCpuPct;
     public long RamUsed => RamTotal - RamAvail;
+
+    // clocks & thermals
+    public double CpuMHz, CpuBaseMHz, CpuPerfLimit = 100;
+    public double? CpuTemp;
+    public double? GpuTemp, GpuSlowdownTemp, GpuPowerW, GpuPowerLimitW, GpuClockMHz, GpuMaxClockMHz, GpuFanPct;
+    public ulong GpuThrottleReasons;
+    public DateTime Time = DateTime.Now;
 }
 
 sealed class Collector : IDisposable
@@ -60,13 +75,21 @@ sealed class Collector : IDisposable
     long prevStamp;
     long pIdle, pKernel, pUser;
     readonly Pdh pdh = new();
-    readonly IntPtr cGpuEng, cGpuMem, cGpuAdapter, cDiskIdle, cDiskBytes, cPagesIn, cPagesOut;
+    readonly IntPtr cGpuEng, cGpuMem, cGpuAdapter, cDiskIdle, cDiskBytes, cPagesIn, cPagesOut, cCpuPerf, cCpuFreq, cCpuLimit;
+    Dictionary<(int, long), long> prevThreads = new();
+    Dictionary<(int, long), string?> cmdCache = new();
+    readonly GpuSensors gpuSensors = new();
+    readonly CpuTempReader cpuTemp = new();
+    public string? CpuTempSource => cpuTemp.Source;
+    readonly Dictionary<string, int> pinnedFor = new();
+    readonly Dictionary<string, List<(long Stamp, long Ram)>> ramHist = new();
+    long lastRamHistStamp;
     readonly int ncpu = Environment.ProcessorCount;
     readonly int selfPid = Environment.ProcessId;
     readonly long vramTotal;
     readonly string gpuName;
     readonly Dictionary<string, string> descCache = new();
-    Dictionary<string, (double cpu, double gpu, double io, double hf)> ema = new();
+    Dictionary<string, (double cpu, double gpu, double io, double hf, double thr)> ema = new();
     List<DriveStat> drives = new();
     long drivesStamp = long.MinValue;
     readonly Queue<double[]> hist = new();
@@ -83,6 +106,9 @@ sealed class Collector : IDisposable
         cDiskBytes = pdh.Add(@"\PhysicalDisk(*)\Disk Bytes/sec");
         cPagesIn = pdh.Add(@"\Memory\Pages Input/sec");
         cPagesOut = pdh.Add(@"\Memory\Pages Output/sec");
+        cCpuPerf = pdh.Add(@"\Processor Information(_Total)\% Processor Performance");
+        cCpuFreq = pdh.Add(@"\Processor Information(_Total)\Processor Frequency");
+        cCpuLimit = pdh.Add(@"\Processor Information(_Total)\% Performance Limit");
         (vramTotal, gpuName) = ReadGpuInfo();
         Sample(); // establishes the baseline for every delta
         primed = true;
@@ -99,7 +125,7 @@ sealed class Collector : IDisposable
         double dt100ns = dt * 1e7;
 
         // processes + per-process deltas
-        var procs = ReadProcesses();
+        var procs = ReadProcesses(dt100ns);
         var cur = new Dictionary<(int, long), ProcInfo>(procs.Count);
         var byPid = new Dictionary<int, ProcInfo>(procs.Count);
         foreach (var p in procs)
@@ -118,6 +144,19 @@ sealed class Collector : IDisposable
         foreach (var p in procs)
             if (p.Pid != 0 && byPid.TryGetValue(p.ParentPid, out var par) && par != p && par.CreateTime <= p.CreateTime)
                 p.Parent = par;
+
+        // command lines: fetched once per process lifetime
+        var cmdNext = new Dictionary<(int, long), string?>(procs.Count);
+        foreach (var p in procs)
+        {
+            var key = (p.Pid, p.CreateTime);
+            if (!cmdCache.TryGetValue(key, out var cmd) && p.Pid > 4)
+                cmd = Native.CommandLine(p.Pid);
+            cmdNext[key] = cmd;
+            p.CommandLine = cmd;
+            p.Summary = CmdLine.Summarize(cmd);
+        }
+        cmdCache = cmdNext;
 
         // PDH: GPU, disks, paging
         pdh.Collect();
@@ -196,9 +235,36 @@ sealed class Collector : IDisposable
             Drives = drives,
             SelfCpuPct = byPid.TryGetValue(selfPid, out var me) ? me.CpuPct : 0,
         };
+        s.CpuBaseMHz = pdh.Get(cCpuFreq);
+        double perf = pdh.Get(cCpuPerf);
+        s.CpuMHz = s.CpuBaseMHz * perf / 100;
+        double limit = pdh.Get(cCpuLimit);
+        s.CpuPerfLimit = limit > 0 ? limit : 100;
+        s.CpuTemp = cpuTemp.Read();
+        gpuSensors.Fill(s);
+
         s.Groups = Group(procs);
+        TrackRam(s.Groups);
         BuildIssues(s);
         return s;
+    }
+
+    /// <summary>Once a minute, remember each sizeable app's RAM so slow leaks can be spotted.</summary>
+    void TrackRam(List<AppGroup> groups)
+    {
+        long now = Stopwatch.GetTimestamp();
+        if (lastRamHistStamp != 0 && Stopwatch.GetElapsedTime(lastRamHistStamp).TotalSeconds < 60) return;
+        lastRamHistStamp = now;
+        var present = new HashSet<string>();
+        foreach (var g in groups)
+        {
+            if (g.Ram < 200 * Fmt.MiB) continue;
+            present.Add(g.Key);
+            if (!ramHist.TryGetValue(g.Key, out var list)) ramHist[g.Key] = list = new();
+            list.Add((now, g.Ram));
+            list.RemoveAll(x => Stopwatch.GetElapsedTime(x.Stamp).TotalMinutes > 61);
+        }
+        foreach (var k in ramHist.Keys.Where(k => !present.Contains(k)).ToList()) ramHist.Remove(k);
     }
 
     static int ParsePid(string inst)
@@ -216,8 +282,9 @@ sealed class Collector : IDisposable
         return parts.Length > 1 ? string.Join(" ", parts.Skip(1)) : "Disk " + inst;
     }
 
-    List<ProcInfo> ReadProcesses()
+    List<ProcInfo> ReadProcesses(double dt100ns)
     {
+        var curThreads = new Dictionary<(int, long), long>(prevThreads.Count + 512);
         uint st;
         int ret;
         while ((st = Native.NtQuerySystemInformation(Native.SystemProcessInformation, buf, bufLen, out ret)) == Native.STATUS_INFO_LENGTH_MISMATCH)
@@ -256,10 +323,30 @@ sealed class Collector : IDisposable
                 Name = name,
                 LName = name.ToLowerInvariant(),
             };
+
+            // SYSTEM_THREAD_INFORMATION[] follows the process entry (0x50 bytes each on x64)
+            if (pid != 0)
+            {
+                double maxT = 0;
+                for (int t = 0; t < pi.Threads; t++)
+                {
+                    IntPtr tp = p + 0x100 + t * 0x50;
+                    long cpu = Marshal.ReadInt64(tp, 0x00) + Marshal.ReadInt64(tp, 0x08);
+                    long ct = Marshal.ReadInt64(tp, 0x10);
+                    int tid = (int)Marshal.ReadIntPtr(tp, 0x30);
+                    var k = (tid, ct);
+                    curThreads[k] = cpu;
+                    if (prevThreads.TryGetValue(k, out var old))
+                        maxT = Math.Max(maxT, (cpu - old) / dt100ns * 100);
+                }
+                pi.MaxThreadPct = Math.Clamp(maxT, 0, 100);
+            }
+
             list.Add(pi);
             if (next == 0) break;
             off += next;
         }
+        prevThreads = curThreads;
         return list;
     }
 
@@ -497,6 +584,12 @@ sealed class Collector : IDisposable
                                                 || s.Equals("venv", StringComparison.OrdinalIgnoreCase));
             if (i > 0) app = parts[i - 1];
         }
+        if (app == null)
+        {
+            // "node C:\...\node_modules\@scope\pkg\cli.js" -> "@scope/pkg (node)", "python train.py" -> "train.py (python)"
+            var script = CmdLine.Script(p.CommandLine);
+            if (script != null) app = $"{script} ({Path.GetFileNameWithoutExtension(p.Name)})";
+        }
         if (hostAppCache.Count > 2000) hostAppCache = new();
         hostAppCache[key] = app;
         return app;
@@ -524,10 +617,15 @@ sealed class Collector : IDisposable
             g.HardFaultsPs += p.HardFaultsPs;
             g.Vram += p.Vram;
             g.GpuPct += p.GpuPct;
+            if (p.MaxThreadPct > g.MaxThreadPct)
+            {
+                g.MaxThreadPct = p.MaxThreadPct;
+                g.MaxThreadProc = p.Summary.Length > 0 ? $"{p.Name} {p.Summary}" : p.Name;
+            }
         }
 
         // light smoothing so the list doesn't jitter
-        var next = new Dictionary<string, (double, double, double, double)>(groups.Count);
+        var next = new Dictionary<string, (double, double, double, double, double)>(groups.Count);
         foreach (var g in groups.Values)
         {
             g.GpuPct = Math.Min(100, g.GpuPct);
@@ -537,8 +635,9 @@ sealed class Collector : IDisposable
                 g.GpuPct = 0.5 * e.gpu + 0.5 * g.GpuPct;
                 g.IoBps = 0.5 * e.io + 0.5 * g.IoBps;
                 g.HardFaultsPs = 0.5 * e.hf + 0.5 * g.HardFaultsPs;
+                g.MaxThreadPct = 0.5 * e.thr + 0.5 * g.MaxThreadPct;
             }
-            next[g.Key] = (g.CpuPct, g.GpuPct, g.IoBps, g.HardFaultsPs);
+            next[g.Key] = (g.CpuPct, g.GpuPct, g.IoBps, g.HardFaultsPs, g.MaxThreadPct);
         }
         ema = next;
         return groups.Values.ToList();
@@ -551,14 +650,15 @@ sealed class Collector : IDisposable
         double ramPct = s.RamTotal > 0 ? 100.0 * s.RamUsed / s.RamTotal : 0;
         double commitPct = s.CommitLimit > 0 ? 100.0 * s.CommitTotal / s.CommitLimit : 0;
         var busiest = s.Disks.OrderByDescending(d => d.BusyPct).FirstOrDefault();
-        double[] m = { s.CpuPct, ramPct, commitPct, s.PagesInBps, s.GpuPct, busiest?.BusyPct ?? 0 };
+        double[] m = { s.CpuPct, ramPct, commitPct, s.PagesInBps, s.GpuPct, busiest?.BusyPct ?? 0, s.CpuMHz, s.CpuPerfLimit };
         if (primed)
         {
             hist.Enqueue(m);
             while (hist.Count > 5) hist.Dequeue();
         }
         double Avg(int i) => hist.Count == 0 ? m[i] : hist.Average(h => h[i]);
-        double cpuA = Avg(0), ramA = Avg(1), commitA = Avg(2), pagesInA = Avg(3), gpuA = Avg(4), diskA = Avg(5);
+        double cpuA = Avg(0), ramA = Avg(1), commitA = Avg(2), pagesInA = Avg(3), gpuA = Avg(4), diskA = Avg(5),
+               mhzA = Avg(6), limitA = Avg(7);
 
         string Top(Func<AppGroup, double> f, Func<AppGroup, string> fmt, int n = 2) =>
             string.Join(", ", s.Groups.Where(g => f(g) > 0).OrderByDescending(f).Take(n).Select(g => $"{g.Name} {fmt(g)}"));
@@ -566,44 +666,85 @@ sealed class Collector : IDisposable
         string TopCpu() => Top(g => g.CpuPct, g => Fmt.Pct(g.CpuPct));
 
         var L = s.Issues;
+        void Add(int sev, string res, string title, string detail) => L.Add(new Issue(sev, res, title, detail));
 
         // memory
         if (pagesInA > 20 * Fmt.MiB && ramA >= 85)
-            L.Add(new(3, "ram", $"Out of RAM: swapping {Fmt.Rate(pagesInA)} from disk. {TopRam()}"));
+            Add(3, "ram", "Out of RAM, swapping to disk", $"{Fmt.Rate(pagesInA)} from page file · {TopRam()}");
         else if (ramA >= 92)
-            L.Add(new(3, "ram", $"RAM {ramA:0}% full ({Fmt.GB(s.RamUsed)}/{Fmt.GB(s.RamTotal)} GB). {TopRam()}"));
+            Add(3, "ram", "RAM almost full", $"{Fmt.GB(s.RamUsed)} of {Fmt.GB(s.RamTotal)} GB · {TopRam()}");
         else if (ramA >= 85)
-            L.Add(new(2, "ram", $"RAM getting tight, {ramA:0}% used. {TopRam()}"));
+            Add(2, "ram", "RAM getting tight", $"{ramA:0}% used · {TopRam()}");
 
         if (commitA >= 95)
-            L.Add(new(3, "commit", $"Commit {commitA:0}% of limit: apps may crash on allocation. {Top(g => g.Commit, g => Fmt.Bytes(g.Commit))}"));
+            Add(3, "commit", "Virtual memory nearly exhausted", $"{commitA:0}% of RAM + page file · apps may crash · {Top(g => g.Commit, g => Fmt.Bytes(g.Commit))}");
         else if (commitA >= 85)
-            L.Add(new(2, "commit", $"Commit {commitA:0}% of limit (RAM + page file). {Top(g => g.Commit, g => Fmt.Bytes(g.Commit))}"));
+            Add(2, "commit", "Virtual memory high", $"{commitA:0}% of RAM + page file · {Top(g => g.Commit, g => Fmt.Bytes(g.Commit))}");
+
+        // memory creeping up for an hour (leak or runaway cache)
+        foreach (var g in s.Groups)
+        {
+            if (!ramHist.TryGetValue(g.Key, out var h) || h.Count < 2) continue;
+            var oldest = h[0];
+            double mins = Stopwatch.GetElapsedTime(oldest.Stamp).TotalMinutes;
+            long growth = g.Ram - oldest.Ram;
+            long peak = Math.Max(g.Ram, h.Max(x => x.Ram));
+            if (mins >= 30 && growth >= 1.5 * Fmt.GiB && growth >= 0.25 * g.Ram && g.Ram >= 0.95 * peak)
+                Add(2, "ram", $"{g.Name} keeps growing", $"+{Fmt.Bytes(growth)} in {mins:0} min, now {Fmt.Bytes(g.Ram)}");
+        }
 
         // cpu
-        if (cpuA >= 90) L.Add(new(3, "cpu", $"CPU maxed at {cpuA:0}%. {TopCpu()}"));
-        else if (cpuA >= 75) L.Add(new(2, "cpu", $"CPU busy, {cpuA:0}%. {TopCpu()}"));
+        if (cpuA >= 90) Add(3, "cpu", "CPU maxed", $"{cpuA:0}% · {TopCpu()}");
+        else if (cpuA >= 75) Add(2, "cpu", "CPU busy", $"{cpuA:0}% · {TopCpu()}");
+
+        // one thread pinned: the app is bottlenecked even though total CPU looks low
+        var stillPinned = new HashSet<string>();
+        foreach (var g in s.Groups.Where(g => g.MaxThreadPct >= 90))
+        {
+            stillPinned.Add(g.Key);
+            pinnedFor[g.Key] = pinnedFor.GetValueOrDefault(g.Key) + 1;
+        }
+        foreach (var k in pinnedFor.Keys.Where(k => !stillPinned.Contains(k)).ToList()) pinnedFor.Remove(k);
+        if (cpuA < 90)
+            foreach (var g in s.Groups.Where(g => pinnedFor.GetValueOrDefault(g.Key) >= 5).OrderByDescending(g => g.MaxThreadPct).Take(2))
+                Add(2, "cpu", $"{g.Name} is maxing one core", $"1 thread at {g.MaxThreadPct:0}% · it can't use your other {ncpu - 1} threads");
+
+        // cpu clocks / heat
+        if (s.CpuTemp is double ct && ct >= 89)
+            Add(ct >= 95 ? 3 : 2, "cpu", $"CPU at {ct:0}°C", "at its thermal limit, clocks will drop");
+        if (cpuA >= 50 && s.CpuBaseMHz > 0)
+        {
+            if (limitA < 95)
+                Add(2, "cpu", "CPU throttling", $"clocks capped at {limitA:0}% by heat or power limit · {mhzA / 1000:0.00} GHz");
+            else if (mhzA < 0.95 * s.CpuBaseMHz)
+                Add(2, "cpu", "CPU throttling", $"{mhzA / 1000:0.00} GHz under load, below its {s.CpuBaseMHz / 1000:0.00} GHz base");
+        }
 
         // gpu
         if (gpuA >= 95)
-            L.Add(new(2, "gpu", $"GPU saturated, {gpuA:0}%. {Top(g => g.GpuPct, g => $"{g.GpuPct:0}%")}"));
+            Add(2, "gpu", "GPU maxed", $"{gpuA:0}% · {Top(g => g.GpuPct, g => $"{g.GpuPct:0}%")}");
+        if ((s.GpuThrottleReasons & GpuSensors.BadThrottle) != 0 && gpuA >= 30)
+            Add(2, "gpu", "GPU throttling", (GpuSensors.Describe(s.GpuThrottleReasons & GpuSensors.BadThrottle) ?? "") +
+                                             (s.GpuTemp is double gt0 ? $" at {gt0:0}°C" : ""));
+        else if (s.GpuTemp is double gt && (gt >= 87 || (s.GpuSlowdownTemp is double sd && gt >= sd - 3)))
+            Add(2, "gpu", $"GPU hot, {gt:0}°C", s.GpuSlowdownTemp is double sd2 ? $"slows down at {sd2:0}°C" : "");
         if (s.VramTotal > 0 && s.VramUsed >= 0.92 * s.VramTotal)
-            L.Add(new(2, "vram", $"VRAM nearly full ({Fmt.GB(s.VramUsed)}/{Fmt.GB(s.VramTotal)} GB); overflow spills into slower system RAM. {Top(g => g.Vram, g => Fmt.Bytes(g.Vram))}"));
+            Add(2, "vram", "Video memory full", $"{Fmt.GB(s.VramUsed)} of {Fmt.GB(s.VramTotal)} GB, spilling into system RAM · {Top(g => g.Vram, g => Fmt.Bytes(g.Vram))}");
 
         // disk activity
         if (busiest != null && diskA >= 90)
-            L.Add(new(2, "disk", $"Disk {busiest.Name} {diskA:0}% busy ({Fmt.Rate(busiest.Bps)}). Most I/O: {Top(g => g.IoBps, g => Fmt.Rate(g.IoBps))}"));
+            Add(2, "disk", $"Disk {busiest.Name} maxed", $"{diskA:0}% busy, {Fmt.Rate(busiest.Bps)} · most I/O: {Top(g => g.IoBps, g => Fmt.Rate(g.IoBps))}");
 
         // disk space
         foreach (var d in s.Drives)
         {
             double pctFree = d.Total > 0 ? 100.0 * d.Free / d.Total : 100;
             if (d.HasPagefile && (d.Free < 10 * Fmt.GiB || pctFree < 5))
-                L.Add(new(3, "drive", $"{d.Name} only {Fmt.Bytes(d.Free)} free: the page file on it can't grow."));
+                Add(3, "drive", $"{d.Name} nearly full", $"{Fmt.Bytes(d.Free)} free · the page file can't grow");
             else if (pctFree < 5)
-                L.Add(new(3, "drive", $"{d.Name} almost full: {Fmt.Bytes(d.Free)} free ({pctFree:0}%)."));
+                Add(3, "drive", $"{d.Name} nearly full", $"{Fmt.Bytes(d.Free)} free ({pctFree:0}%)");
             else if (pctFree < 10 && d.Free < 50 * Fmt.GiB)
-                L.Add(new(2, "drive", $"{d.Name} low on space: {Fmt.Bytes(d.Free)} free ({pctFree:0}%)."));
+                Add(2, "drive", $"{d.Name} low on space", $"{Fmt.Bytes(d.Free)} free ({pctFree:0}%)");
         }
 
         // keep insertion order within the same severity (memory first: it's usually the root cause)
@@ -644,7 +785,10 @@ static class Report
     public static string Text(Snapshot s)
     {
         var sb = new StringBuilder();
+        sb.AppendLine($"Time {s.Time:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"CPU {s.CpuPct:0.0}%  ({s.LogicalCpus} logical)   procs {s.ProcessCount}  threads {s.ThreadCount}");
+        sb.AppendLine($"CPU clock {s.CpuMHz / 1000:0.00} GHz (base {s.CpuBaseMHz / 1000:0.00})  firmware limit {s.CpuPerfLimit:0}%  temp {(s.CpuTemp is double ct ? $"{ct:0}°C" : "n/a (needs LibreHardwareMonitor running)")}");
+        sb.AppendLine($"GPU temp {s.GpuTemp?.ToString("0") ?? "n/a"}°C (slowdown {s.GpuSlowdownTemp?.ToString("0") ?? "?"})  power {s.GpuPowerW?.ToString("0") ?? "?"}/{s.GpuPowerLimitW?.ToString("0") ?? "?"} W  clock {s.GpuClockMHz?.ToString("0") ?? "?"}/{s.GpuMaxClockMHz?.ToString("0") ?? "?"} MHz  fan {s.GpuFanPct?.ToString("0") ?? "?"}%  limits: {GpuSensors.Describe(s.GpuThrottleReasons) ?? "none"}");
         sb.AppendLine($"RAM used {Fmt.Bytes(s.RamUsed)} / {Fmt.Bytes(s.RamTotal)}  avail {Fmt.Bytes(s.RamAvail)}  cache {Fmt.Bytes(s.Cache)}");
         sb.AppendLine($"Commit {Fmt.Bytes(s.CommitTotal)} / {Fmt.Bytes(s.CommitLimit)}   pagefile {Fmt.Bytes(s.PagefileUsed)} / {Fmt.Bytes(s.PagefileTotal)}");
         sb.AppendLine($"Paging in {Fmt.Rate(s.PagesInBps)}  out {Fmt.Rate(s.PagesOutBps)}  hard faults {s.HardFaultsPs:0}/s");
@@ -654,14 +798,15 @@ static class Report
         sb.AppendLine($"Bottleneck: {s.Bottleneck}");
         foreach (var i in s.Issues) sb.AppendLine($"  [{i.Severity}] {i.Text}");
         sb.AppendLine();
-        sb.AppendLine($"{"APP",-34}{"N",4}{"CPU%",8}{"RAM",10}{"COMMIT",10}{"GPU%",7}{"VRAM",10}{"IO/s",10}");
+        sb.AppendLine($"{"APP",-34}{"N",4}{"CPU%",8}{"THR%",6}{"RAM",10}{"COMMIT",10}{"GPU%",7}{"VRAM",10}{"IO/s",10}");
         foreach (var g in s.Groups.OrderByDescending(g => g.Ram).Take(40))
         {
             string name = g.Name.Length > 33 ? g.Name[..33] : g.Name;
-            sb.AppendLine($"{name,-34}{g.Members.Count,4}{g.CpuPct,8:0.0}{Fmt.Bytes(g.Ram),10}{Fmt.Bytes(g.Commit),10}{g.GpuPct,7:0}{Fmt.Bytes(g.Vram),10}{Fmt.Short(g.IoBps),10}");
-            foreach (var p in g.Members.OrderByDescending(p => p.PrivateWs).Take(4))
-                sb.AppendLine($"    {p.Name,-30}{p.Pid,8}{p.CpuPct,8:0.0}{Fmt.Bytes(p.PrivateWs),10}");
+            sb.AppendLine($"{name,-34}{g.Members.Count,4}{g.CpuPct,8:0.0}{g.MaxThreadPct,6:0}{Fmt.Bytes(g.Ram),10}{Fmt.Bytes(g.Commit),10}{g.GpuPct,7:0}{Fmt.Bytes(g.Vram),10}{Fmt.Short(g.IoBps),10}");
+            foreach (var p in g.Members.OrderByDescending(p => p.PrivateWs).Take(6))
+                sb.AppendLine($"    {p.Name,-30}{p.Pid,8}{p.CpuPct,8:0.0}{p.MaxThreadPct,6:0}{Fmt.Bytes(p.PrivateWs),10}   {p.Summary}");
         }
+        sb.AppendLine("(THR% = busiest single thread as % of one core)");
         return sb.ToString();
     }
 }

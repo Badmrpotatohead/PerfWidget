@@ -1,7 +1,7 @@
 <Window x:Class="PerfWidget.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PerfWidget" Width="420" SizeToContent="Height"
+        Title="PerfWidget" Width="380" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" Topmost="True" ShowInTaskbar="False"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
@@ -34,33 +34,40 @@
   </Window.Resources>
 
   <Border x:Name="Shell" CornerRadius="10" Background="#FF101318" BorderBrush="#2EFFFFFF"
-          BorderThickness="1" Padding="14,10,14,12">
+          BorderThickness="1" Padding="16,12,16,14">
     <StackPanel>
-      <Grid x:Name="HeaderGrid" Background="Transparent" Margin="0,0,0,6">
+      <!-- verdict -->
+      <Grid x:Name="HeaderGrid" Background="Transparent">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <Ellipse x:Name="StatusDot" Width="9" Height="9" VerticalAlignment="Top" Margin="0,5,8,0" Fill="#3DD68C"/>
-        <TextBlock x:Name="Headline" Grid.Column="1" TextWrapping="Wrap" FontSize="13"
-                   FontWeight="SemiBold" Text="Measuring…"/>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="8,-1,-6,0">
+        <Ellipse x:Name="StatusDot" Width="10" Height="10" VerticalAlignment="Top" Margin="0,6,10,0" Fill="#3DD68C"/>
+        <StackPanel Grid.Column="1">
+          <TextBlock x:Name="Headline" TextWrapping="Wrap" FontSize="14.5" FontWeight="SemiBold" Text="Measuring…"/>
+          <TextBlock x:Name="HeadDetail" TextWrapping="Wrap" FontSize="11.5" Foreground="#9AA3B2" Margin="0,1,0,0"/>
+          <StackPanel x:Name="IssuePanel" Margin="0,6,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="8,0,-6,0">
           <Button x:Name="CompactBtn" Style="{StaticResource ChromeBtn}" Content="&#xE70E;" ToolTip="Compact / full view"/>
           <Button x:Name="HideBtn" Style="{StaticResource ChromeBtn}" Content="&#xE921;" ToolTip="Hide to tray (click the tray icon to bring it back)"/>
         </StackPanel>
       </Grid>
 
-      <StackPanel x:Name="IssuePanel" Background="Transparent" Margin="17,0,0,6"/>
-      <StackPanel x:Name="ResourcePanel" Background="Transparent"/>
+      <!-- resources -->
+      <StackPanel x:Name="ResourcePanel" Background="Transparent" Margin="0,12,0,0"/>
 
-      <StackPanel x:Name="FullPanel" Margin="0,8,0,0">
-        <Border Height="1" Background="#1FFFFFFF" Margin="0,0,0,6"/>
-        <Grid x:Name="AppHeader"/>
+      <!-- apps -->
+      <StackPanel x:Name="FullPanel" Margin="0,14,0,0">
+        <Grid Margin="0,0,0,4">
+          <TextBlock Text="TOP APPS" FontSize="10" FontWeight="SemiBold" Foreground="#7C8596"/>
+          <TextBlock x:Name="SortLabel" HorizontalAlignment="Right" FontSize="10" FontWeight="SemiBold"
+                     Foreground="#B4BCC8" Cursor="Hand" Text="RAM · auto ▾"
+                     ToolTip="Click to change what apps are ranked by. Auto follows whatever is under pressure right now."/>
+        </Grid>
         <StackPanel x:Name="AppList"/>
-        <Border Height="1" Background="#1FFFFFFF" Margin="0,6,0,6"/>
-        <WrapPanel x:Name="DrivePanel"/>
-        <TextBlock x:Name="FooterText" Foreground="#6F7889" FontSize="10.5" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="DriveText" FontSize="10.5" Foreground="#7C8596" Margin="0,12,0,0" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </StackPanel>
   </Border>
