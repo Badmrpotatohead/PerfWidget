@@ -23,7 +23,7 @@ public partial class App : Application
             using var c = new Collector();
             Snapshot s = c.Sample();
             for (int i = 0; i < 4; i++) { Thread.Sleep(1000); s = c.Sample(); }
-            File.WriteAllText(path, Report.Text(s));
+            File.WriteAllText(path, Report.Text(s, c.Platform.CpuTempHint));
             Shutdown();
             return;
         }
@@ -58,63 +58,10 @@ public partial class App : Application
     }
 }
 
-sealed class Settings
+
+static class Win32
 {
-    public double? Left { get; set; }
-    public double? Top { get; set; }
-    public bool Compact { get; set; }
-    public bool Topmost { get; set; } = true;
-    public double Opacity { get; set; } = 1.0;
-    public int AppRows { get; set; } = 5;
-
-    static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PerfWidget");
-    static string FilePath => Path.Combine(Dir, "settings.json");
-
-    public static Settings Load()
-    {
-        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings(); }
-        catch { return new Settings(); }
-    }
-
-    public void Save()
-    {
-        try
-        {
-            Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch { }
-    }
-}
-
-static class StartWithWindows
-{
-    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", Name = "PerfWidget";
-
-    public static bool IsEnabled()
-    {
-        using var k = Registry.CurrentUser.OpenSubKey(RunKey);
-        return k?.GetValue(Name) is string;
-    }
-
-    public static void Set(bool on)
-    {
-        using var k = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (on) k.SetValue(Name, $"\"{Environment.ProcessPath}\"");
-        else k.DeleteValue(Name, false);
-    }
-}
-
-static class Log
-{
-    public static void Error(Exception e)
-    {
-        try
-        {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PerfWidget");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "error.log"), $"{DateTime.Now:s} {e}\n");
-        }
-        catch { }
-    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowLong(System.IntPtr h, int idx);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int SetWindowLong(System.IntPtr h, int idx, int v);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool DestroyIcon(System.IntPtr h);
 }

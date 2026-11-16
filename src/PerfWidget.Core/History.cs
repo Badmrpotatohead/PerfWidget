@@ -10,9 +10,9 @@ using System.Text.RegularExpressions;
 
 namespace PerfWidget;
 
-sealed record HistApp(string N, double Cpu, long Ram, double Gpu, double Io, double Thr);
+public sealed record HistApp(string N, double Cpu, long Ram, double Gpu, double Io, double Thr);
 
-sealed record HistLine(
+public sealed record HistLine(
     DateTime T,
     double Cpu, double CpuMax, double CpuMHz, double CpuMHzMin, double? CpuTemp,
     long RamUsed, long RamTotal, long Commit, long CommitLimit,
@@ -22,12 +22,12 @@ sealed record HistLine(
     string[] Issues, HistApp[] Apps);
 
 /// <summary>
-/// Rolling on-disk history: one JSON line per 10 s window in %APPDATA%\PerfWidget\history\yyyy-MM-dd.jsonl,
+/// Rolling on-disk history: one JSON line per 10 s window in <data dir>/history\yyyy-MM-dd.jsonl,
 /// kept for 7 days (~6-10 MB/day). Each line holds averages/peaks plus the apps that mattered in that window.
 /// </summary>
-sealed class HistoryLog
+public sealed class HistoryLog
 {
-    public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PerfWidget", "history");
+    public static string Dir => AppPaths.HistoryDir;
     const int WindowSec = 10, KeepDays = 7;
 
     static readonly JsonSerializerOptions Json = new()

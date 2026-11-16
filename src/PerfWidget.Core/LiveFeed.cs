@@ -8,15 +8,15 @@ namespace PerfWidget;
 
 /// <summary>
 /// Machine-readable live snapshot for other tools (Orbit, scripts, Claude).
-/// The running widget rewrites %APPDATA%\PerfWidget\live.json every 2 s (atomic replace).
+/// The running widget rewrites live.json in the data dir (see AppPaths) every 2 s (atomic replace).
 /// Readers should treat the file as stale when "t" is older than ~10 s (widget closed).
 /// Schema is versioned by "v"; fields are only ever added within a version.
 /// </summary>
-static class LiveFeed
+public static class LiveFeed
 {
     public const int SchemaVersion = 1;
     public const int IntervalSec = 2;
-    public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PerfWidget", "live.json");
+    public static string FilePath => AppPaths.LiveFeedFile;
 
     static DateTime lastWrite = DateTime.MinValue;
 
@@ -46,6 +46,7 @@ static class LiveFeed
             w.WriteString("t", s.Time.ToUniversalTime().ToString("o"));
             w.WriteNumber("intervalSec", IntervalSec);
             w.WriteString("source", "PerfWidget");
+            w.WriteString("platform", s.Platform);
             w.WriteNumber("pid", Environment.ProcessId);
             w.WriteString("exe", Environment.ProcessPath);
 
@@ -78,6 +79,8 @@ static class LiveFeed
             w.WriteNumber("perfLimitPct", R(s.CpuPerfLimit));
             if (s.CpuTemp is double ct) w.WriteNumber("tempC", R(ct)); else w.WriteNull("tempC");
             w.WriteString("tempSource", cpuTempSource);
+            if (s.ThermalLevel is int tl) w.WriteNumber("thermalLevel", tl); else w.WriteNull("thermalLevel");
+            Opt(w, "stallPct", s.CpuStallPct);
             w.WriteNumber("processes", s.ProcessCount);
             w.WriteNumber("threads", s.ThreadCount);
             w.WriteEndObject();
@@ -93,6 +96,10 @@ static class LiveFeed
             w.WriteNumber("pagefileUsedBytes", s.PagefileUsed);
             w.WriteNumber("pagingInBps", R(s.PagesInBps, 0));
             w.WriteNumber("pagingOutBps", R(s.PagesOutBps, 0));
+            w.WriteNumber("compressedBytes", s.Compressed);
+            if (s.MemoryPressure is int mp) w.WriteNumber("pressure", mp); else w.WriteNull("pressure");
+            Opt(w, "memStallPct", s.MemStallPct);
+            Opt(w, "ioStallPct", s.IoStallPct);
             w.WriteEndObject();
 
             w.WriteStartObject("gpu");

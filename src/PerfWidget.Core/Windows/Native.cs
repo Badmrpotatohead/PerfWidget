@@ -5,6 +5,7 @@ using System.Text;
 
 namespace PerfWidget;
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 static class Native
 {
     public const int SystemProcessInformation = 5;
@@ -41,10 +42,6 @@ static class Native
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern uint QueryDosDevice(string device, StringBuilder target, int max);
-
-    [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int idx);
-    [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int idx, int v);
-    [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr h);
 
     public static string? ImagePath(int pid)
     {
@@ -92,19 +89,6 @@ static class Native
         finally { CloseHandle(h); }
     }
 
-    // ---------------- NVML (ships with the NVIDIA driver) ----------------
-    [DllImport("nvml.dll")] public static extern int nvmlInit_v2();
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetHandleByIndex_v2(uint i, out IntPtr dev);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetTemperature(IntPtr d, int sensor, out uint t);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetTemperatureThreshold(IntPtr d, int type, out uint t);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetPowerUsage(IntPtr d, out uint mw);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetEnforcedPowerLimit(IntPtr d, out uint mw);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetClockInfo(IntPtr d, int type, out uint mhz);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetMaxClockInfo(IntPtr d, int type, out uint mhz);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetFanSpeed(IntPtr d, out uint pct);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetCurrentClocksEventReasons(IntPtr d, out ulong r);
-    [DllImport("nvml.dll")] public static extern int nvmlDeviceGetCurrentClocksThrottleReasons(IntPtr d, out ulong r);
-
     // ---------------- PDH ----------------
     [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
     public static extern uint PdhOpenQuery(string? src, IntPtr user, out IntPtr q);
@@ -130,6 +114,7 @@ static class Native
 }
 
 /// <summary>Thin wrapper over a single PDH query. Only touched from the collector thread.</summary>
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 sealed class Pdh : IDisposable
 {
     readonly IntPtr q;

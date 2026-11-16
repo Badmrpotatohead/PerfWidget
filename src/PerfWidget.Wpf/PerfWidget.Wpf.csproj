@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Management" Version="10.0.0" />
+    <ProjectReference Include="..\PerfWidget.Core\PerfWidget.Core.csproj" />
   </ItemGroup>
 
 </Project>

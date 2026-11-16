@@ -267,7 +267,7 @@ public partial class MainWindow : Window
         {
             // tool window: no Alt+Tab entry
             var h = new WindowInteropHelper(this).Handle;
-            Native.SetWindowLong(h, -20, Native.GetWindowLong(h, -20) | 0x80);
+            Win32.SetWindowLong(h, -20, Win32.GetWindowLong(h, -20) | 0x80);
         };
 
         new Thread(Loop) { IsBackground = true, Name = "collector" }.Start();
@@ -327,7 +327,7 @@ public partial class MainWindow : Window
 
         miCompact = Check("Compact mode", v => settings.Compact = v);
         miTop = Check("Always on top", v => settings.Topmost = v);
-        miStartup = Check("Start with Windows", v => { try { StartWithWindows.Set(v); } catch (Exception ex) { Log.Error(ex); } });
+        miStartup = Check("Start with Windows", v => { try { Autostart.Set(v); } catch (Exception ex) { Log.Error(ex); } });
 
         var op = new MenuItem { Header = "Opacity" };
         foreach (var v in new[] { 1.0, 0.9, 0.8, 0.7 })
@@ -355,7 +355,7 @@ public partial class MainWindow : Window
         {
             miCompact!.IsChecked = settings.Compact;
             miTop!.IsChecked = settings.Topmost;
-            miStartup!.IsChecked = StartWithWindows.IsEnabled();
+            miStartup!.IsChecked = Autostart.IsEnabled();
         };
         Shell.ContextMenu = m;
     }
@@ -414,7 +414,7 @@ public partial class MainWindow : Window
         }
         IntPtr h = bmp.GetHicon();
         var icon = (Drawing.Icon)Drawing.Icon.FromHandle(h).Clone();
-        Native.DestroyIcon(h);
+        Win32.DestroyIcon(h);
         return icon;
     }
 
