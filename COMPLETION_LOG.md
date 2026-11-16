@@ -32,3 +32,13 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - Memory-creep alert needs 30+ min of runtime to arm; not triggered live.
 - Layout redesigned after "wall of data" feedback: title + detail alerts, one line per resource, one number per app, details in tooltips. Settings "Rows" renamed to "AppRows" (default 5).
 - Overhead re-measured: ~0.12% CPU, ~140 MB private RAM.
+
+## PROMPT #3 — Live JSON feed for Orbit + Orbit Machine Health prompt
+**Status:** ✅ Shipped
+**Date:** 2026-11-16
+**Commit:** 188ac50, 96079ef
+**Files changed:** LiveFeed.cs (new), App.xaml.cs, MainWindow.xaml.cs, README.md
+**Notes:**
+- The widget now rewrites %APPDATA%\PerfWidget\live.json every 2 s, replacing the whole file at once. Schema v1 covers the verdict, issues, cpu, memory, gpu, disks, drives, the top 20 apps, and the exe path.
+- New `--json <file>` one-shot mode. Verified on this machine: real values, refreshes every 2 s.
+- The Orbit side was queued through Orbit's own queue as orbit #8543, on the Windows node, because the default node is the Mac, where the feed doesn't exist. It covers a reader module, /api/machine-health, the orbit_machine_health MCP tool and a Diagnostics "Machine" panel. It is optional and does nothing when PerfWidget is absent. As of logging it is pending Orbit's AI review and approval; not built yet.
