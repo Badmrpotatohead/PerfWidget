@@ -16,3 +16,19 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - Swap, RAM, VRAM and low-disk alerts are implemented, but this machine had no such pressure, so they were not triggered live.
 - "Start with Windows" is a right-click menu toggle (HKCU Run key). Not enabled automatically.
 - Local git repo only; no remote, so no PR/merge.
+
+## PROMPT #2 — Single-core detection, command lines, temps/throttling, history, decluttered layout
+**Status:** ✅ Shipped
+**Date:** 2026-11-16
+**Commit:** afeb7a3
+**Files changed:** Collector.cs, Native.cs, Sensors.cs (new), History.cs (new), MainWindow.xaml, MainWindow.xaml.cs, App.xaml.cs, PerfWidget.csproj, README.md, screenshot*.png
+**Notes:**
+- Per-thread CPU from the same NtQuerySystemInformation snapshot. Verified: one pinned thread (28% total CPU) raised "Claude is maxing one core" within ~6 s.
+- Command lines read via NtQueryInformationProcess (no admin). Script-based naming verified ("server.js (node)").
+- CPU clock and firmware limit via PDH (4.49 GHz vs 3.30 base observed).
+- GPU temp, power, clocks and throttle reasons via NVML (verified 41°C / 27 W). NVIDIA's "Reliability" flag (0x400) is deliberately ignored.
+- CPU temperature: this machine has no driver-free source (no ACPI thermal zones, no HW monitor). Reader for LibreHardwareMonitor WMI added but UNTESTED, since LHM isn't installed. Installing it needs the user's OK.
+- History: 10 s JSONL lines, 7-day retention. Verified the --history digest reconstructs a synthetic CPU burst, its culprit, the minimum clock and a single-core event.
+- Memory-creep alert needs 30+ min of runtime to arm; not triggered live.
+- Layout redesigned after "wall of data" feedback: title + detail alerts, one line per resource, one number per app, details in tooltips. Settings "Rows" renamed to "AppRows" (default 5).
+- Overhead re-measured: ~0.12% CPU, ~140 MB private RAM.
