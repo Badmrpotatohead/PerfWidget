@@ -54,6 +54,20 @@ An always-on-top Windows widget that answers "what is hammering my machine?" at 
 
   `PerfWidget.exe --dump now.txt` writes the live snapshot (every app and its processes) instead.
 
+## Live feed for other tools
+
+- While the widget runs, it rewrites `%APPDATA%\PerfWidget\live.json` every 2 s, replacing the whole file at once so readers never see a half-written file. Orbit reads this file.
+- `PerfWidget.exe --json now.json` writes one snapshot in the same format without the widget (takes ~6 s).
+- Schema `v: 1`:
+  - `t` (UTC) and `intervalSec`. Treat the feed as stale once `t` is more than ~10 s old, which means the widget is closed.
+  - `verdict` {severity 0–3, title, detail, bottleneck} and `issues[]` {severity, resource, title, detail}.
+  - `cpu` {pct, mhz, baseMhz, perfLimitPct, tempC, processes, threads}.
+  - `memory` {totalBytes, usedBytes, pct, commitBytes, commitLimitBytes, pagefile…, pagingInBps}.
+  - `gpu` {pct, vram…, tempC, powerW, powerLimitW, clockMhz, throttle}.
+  - `disks[]` {name, busyPct, bps} and `drives[]` {name, freeBytes, totalBytes, hasPagefile}.
+  - `apps[]`: up to 20 apps that matter (top by RAM, CPU, GPU and I/O). Each has {name, processes, cpuPct, maxThreadPct, ramBytes, commitBytes, gpuPct, vramBytes, ioBps}.
+  - Within a version, fields are only ever added, never renamed or removed.
+
 ## Temperatures
 
 - **GPU** (temperature, power, clocks, fan, throttle reasons): read from NVIDIA's NVML, which ships with the driver. No setup needed.

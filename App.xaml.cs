@@ -28,6 +28,19 @@ public partial class App : Application
             return;
         }
 
+        int json = Array.IndexOf(e.Args, "--json");
+        if (json >= 0)
+        {
+            // PerfWidget.exe --json [outfile]  : one live snapshot in the live.json schema
+            string path = json + 1 < e.Args.Length ? e.Args[json + 1] : "perfwidget-now.json";
+            using var c = new Collector();
+            Snapshot s = c.Sample();
+            for (int i = 0; i < 5; i++) { Thread.Sleep(1000); s = c.Sample(); }
+            File.WriteAllBytes(path, LiveFeed.Json(s, c.CpuTempSource));
+            Shutdown();
+            return;
+        }
+
         int hist = Array.IndexOf(e.Args, "--history");
         if (hist >= 0)
         {

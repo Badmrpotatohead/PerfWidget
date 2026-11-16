@@ -456,6 +456,7 @@ public partial class MainWindow : Window
                 var s = collector.Sample();
                 history.Add(s);
                 string? tempSource = collector.CpuTempSource;
+                LiveFeed.MaybeWrite(s, tempSource);
                 Dispatcher.BeginInvoke(() => Render(s, tempSource));
             }
             catch (Exception ex) { Log.Error(ex); }
