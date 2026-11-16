@@ -59,7 +59,7 @@ An always-on-top Windows widget that answers "what is hammering my machine?" at 
 - While the widget runs, it rewrites `%APPDATA%\PerfWidget\live.json` every 2 s, replacing the whole file at once so readers never see a half-written file. Orbit reads this file.
 - `PerfWidget.exe --json now.json` writes one snapshot in the same format without the widget (takes ~6 s).
 - Schema `v: 1`:
-  - `t` (UTC) and `intervalSec`. Treat the feed as stale once `t` is more than ~10 s old, which means the widget is closed.
+  - `t` (UTC), `intervalSec` and `exe` (the widget's path, for running `--history`). Treat the feed as stale once `t` is more than ~10 s old, which means the widget is closed.
   - `verdict` {severity 0–3, title, detail, bottleneck} and `issues[]` {severity, resource, title, detail}.
   - `cpu` {pct, mhz, baseMhz, perfLimitPct, tempC, processes, threads}.
   - `memory` {totalBytes, usedBytes, pct, commitBytes, commitLimitBytes, pagefile…, pagingInBps}.

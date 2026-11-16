@@ -47,6 +47,7 @@ static class LiveFeed
             w.WriteNumber("intervalSec", IntervalSec);
             w.WriteString("source", "PerfWidget");
             w.WriteNumber("pid", Environment.ProcessId);
+            w.WriteString("exe", Environment.ProcessPath);
 
             // verdict = worst issue, or all clear
             var top = s.Issues.FirstOrDefault();
