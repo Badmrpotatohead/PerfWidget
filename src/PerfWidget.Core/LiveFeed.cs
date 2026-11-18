@@ -18,6 +18,9 @@ public static class LiveFeed
     public const int IntervalSec = 2;
     public static string FilePath => AppPaths.LiveFeedFile;
 
+    /// <summary>Who writes the feed: "widget" (the window) or "sampler" (the hidden process Orbit runs).</summary>
+    public static string Writer = "widget";
+
     static DateTime lastWrite = DateTime.MinValue;
 
     public static void MaybeWrite(Snapshot s, string? cpuTempSource)
@@ -49,6 +52,7 @@ public static class LiveFeed
             w.WriteString("platform", s.Platform);
             w.WriteNumber("pid", Environment.ProcessId);
             w.WriteString("exe", Environment.ProcessPath);
+            w.WriteString("writer", Writer);
 
             // verdict = worst issue, or all clear
             var top = s.Issues.FirstOrDefault();

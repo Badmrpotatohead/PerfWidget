@@ -16,50 +16,12 @@ static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // Headless modes (also what CI and Orbit use): no window, no display needed.
-        int i;
-        if ((i = Array.IndexOf(args, "--dump")) >= 0)
-        {
-            using var c = new Collector();
-            var s = Warm(c, 4);
-            Write(Arg(args, i, "perfwidget-dump.txt"), Report.Text(s, c.Platform.CpuTempHint));
-            return 0;
-        }
-        if ((i = Array.IndexOf(args, "--json")) >= 0)
-        {
-            using var c = new Collector();
-            var s = Warm(c, 5);
-            var bytes = LiveFeed.Json(s, c.CpuTempSource);
-            string path = Arg(args, i, "perfwidget-now.json");
-            if (path == "-") { using var o = Console.OpenStandardOutput(); o.Write(bytes); }
-            else File.WriteAllBytes(path, bytes);
-            return 0;
-        }
-        if ((i = Array.IndexOf(args, "--history")) >= 0)
-        {
-            double mins = i + 1 < args.Length && double.TryParse(args[i + 1], out var m) ? m : 60;
-            string path = i + 2 < args.Length ? args[i + 2] : "perfwidget-history.txt";
-            Write(path, HistoryLog.Summary(DateTime.Now.AddMinutes(-mins), DateTime.Now));
-            return 0;
-        }
+        // Headless modes (shared with the hidden sampler): no window, no display needed.
+        if (Headless.TryRun(args) is int rc) return rc;
 
         mutex = new Mutex(true, "PerfWidget.SingleInstance", out bool created);
         if (!created) return 0;
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
-    }
-
-    static string Arg(string[] a, int i, string dflt) => i + 1 < a.Length ? a[i + 1] : dflt;
-
-    static void Write(string path, string text)
-    {
-        if (path == "-") Console.Out.Write(text); else File.WriteAllText(path, text);
-    }
-
-    static Snapshot Warm(Collector c, int seconds)
-    {
-        Snapshot s = c.Sample();
-        for (int k = 0; k < seconds; k++) { Thread.Sleep(1000); s = c.Sample(); }
-        return s;
     }
 
     public static AppBuilder BuildAvaloniaApp() =>
