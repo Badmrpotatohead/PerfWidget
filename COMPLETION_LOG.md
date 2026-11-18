@@ -72,3 +72,16 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - Report text now prints n/a for unknown clocks and "shared with RAM" for unified GPU memory. CI actions moved to v5 (Node 20 deprecation).
 - Orbit #8543 and #8544 both shipped to Orbit's master (macOS and Linux feed paths included). They take effect at Orbit's next restart, which was not done here.
 - Still not run on the user's own Mac. The .app is ad-hoc signed, not notarized, so Gatekeeper needs a right-click → Open the first time.
+
+## PROMPT #6 — Hidden sampler so Orbit has Machine Health on every machine
+**Status:** ✅ Shipped
+**Date:** 2026-11-18
+**Commit:** ea6acd8 (release tag sampler-v1.2.0)
+**Files changed:** src/PerfWidget.Core/Headless.cs, src/PerfWidget.Core/LiveFeed.cs, src/PerfWidget.Sampler/*, src/PerfWidget.App/Program.cs, scripts/check-feed.ps1, .github/workflows/ci.yml, README.md
+**Notes:**
+- The user clarified that they want this view inside Orbit on every machine (Settings → Developer → System monitoring), with no separate widget to install. #8543/#8544 only read a feed that the user's own widget writes, under Diagnostics → Machine.
+- New `perfwidget-sampler`: the collector with no window. `--feed --parent-pid N` keeps live.json and history current, goes idle while an open widget is writing, and exits when Orbit exits. The feed gains a `writer` field.
+- Tested on Windows against the running widget: idle at 0.008% CPU while the widget was open, took over with no history gap when it closed, stepped back when it reopened, and exited when its parent died. ~0.15% CPU and 130 MB while feeding.
+- CI tests the published single-file sampler on Windows, macOS and Linux, including feed mode. Release sampler-v1.2.0 was published with SHA256SUMS. The Windows asset was downloaded independently; its hash matched and it ran.
+- Queued Orbit #8546 (pending review and approval): Orbit downloads the pinned, hash-checked sampler with gh, runs and supervises it, and shows the widget view on Settings → Developer.
+- The repo is private, so each machine's `gh` must be signed in to an account that can read it. Testers' machines would need the repo or release made public, or the sampler bundled into Orbit's installer.
