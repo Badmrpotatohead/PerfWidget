@@ -96,9 +96,12 @@ public sealed class Collector : IDisposable
             if (p.Pid == 0) continue;
             ProcInfo? par = null;
             if (byPid.TryGetValue(p.ParentPid, out var pp) && pp != p && pp.CreateTime <= p.CreateTime) par = pp;
-            // macOS: XPC helpers are children of launchd; their "responsible" app is the real owner
+            // macOS: XPC helpers are children of launchd; their "responsible" app is the real owner.
+            // Only follow it to a real .app that isn't a launcher (Terminal…): a CLI tool orphaned to launchd
+            // also has a responsible process, often a daemon, and must not be swallowed by it.
             if (p.ResponsiblePid > 0 && p.ResponsiblePid != p.Pid && (par == null || IsBoundary(par))
-                && byPid.TryGetValue(p.ResponsiblePid, out var rp) && rp != p)
+                && byPid.TryGetValue(p.ResponsiblePid, out var rp) && rp != p
+                && AppFromPathOf(rp) != null && !IsBoundary(rp))
                 par = rp;
             p.Parent = par;
         }

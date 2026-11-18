@@ -14,9 +14,9 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: if (Test-Path hog.pid) { Stop-Process -Id ([int](Get-Content hog.pid)) -Force -ErrorAction SilentlyContinue }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: snapshot-${{ runner.os }}
@@ -75,8 +75,8 @@ jobs:
           - { os: windows-latest, rid: win-x64 }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -103,7 +103,7 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path out/* -DestinationPath PerfWidget-win-x64.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: PerfWidget-${{ matrix.rid }}
           path: PerfWidget-${{ matrix.rid }}.*

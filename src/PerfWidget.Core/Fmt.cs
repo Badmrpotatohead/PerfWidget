@@ -29,14 +29,14 @@ public static class Report
         string swap = s.Platform == "windows" ? "pagefile" : "swap";
         sb.AppendLine($"Time {s.Time:yyyy-MM-dd HH:mm:ss}   platform {s.Platform}");
         sb.AppendLine($"CPU {s.CpuPct:0.0}%  ({s.LogicalCpus} logical)   procs {s.ProcessCount}  threads {s.ThreadCount}");
-        sb.AppendLine($"CPU clock {s.CpuMHz / 1000:0.00} GHz (base {s.CpuBaseMHz / 1000:0.00})  firmware limit {s.CpuPerfLimit:0}%  thermal level {s.ThermalLevel?.ToString() ?? "n/a"}  temp {(s.CpuTemp is double ct ? $"{ct:0}°C" : "n/a" + (cpuTempHint != null ? $" ({cpuTempHint})" : ""))}");
+        sb.AppendLine($"CPU clock {(s.CpuMHz > 0 ? $"{s.CpuMHz / 1000:0.00} GHz" : "n/a")} (base {(s.CpuBaseMHz > 0 ? $"{s.CpuBaseMHz / 1000:0.00}" : "n/a")})  firmware limit {s.CpuPerfLimit:0}%  thermal level {s.ThermalLevel?.ToString() ?? "n/a"}  temp {(s.CpuTemp is double ct ? $"{ct:0}°C" : "n/a" + (cpuTempHint != null ? $" ({cpuTempHint})" : ""))}");
         sb.AppendLine($"GPU temp {s.GpuTemp?.ToString("0") ?? "n/a"}°C (slowdown {s.GpuSlowdownTemp?.ToString("0") ?? "?"})  power {s.GpuPowerW?.ToString("0") ?? "?"}/{s.GpuPowerLimitW?.ToString("0") ?? "?"} W  clock {s.GpuClockMHz?.ToString("0") ?? "?"}/{s.GpuMaxClockMHz?.ToString("0") ?? "?"} MHz  fan {s.GpuFanPct?.ToString("0") ?? "?"}%  limits: {GpuSensors.Describe(s.GpuThrottleReasons) ?? "none"}");
         sb.AppendLine($"RAM used {Fmt.Bytes(s.RamUsed)} / {Fmt.Bytes(s.RamTotal)}  avail {Fmt.Bytes(s.RamAvail)}  cache {Fmt.Bytes(s.Cache)}  compressed {Fmt.Bytes(s.Compressed)}  pressure {s.MemoryPressure?.ToString() ?? "n/a"}");
         sb.AppendLine($"Commit {Fmt.Bytes(s.CommitTotal)} / {(s.CommitLimit > 0 ? Fmt.Bytes(s.CommitLimit) : "no limit")}   {swap} {Fmt.Bytes(s.PagefileUsed)} / {Fmt.Bytes(s.PagefileTotal)}");
         sb.AppendLine($"Paging in {Fmt.Rate(s.PagesInBps)}  out {Fmt.Rate(s.PagesOutBps)}  hard faults {s.HardFaultsPs:0}/s");
         if (s.CpuStallPct != null || s.MemStallPct != null || s.IoStallPct != null)
             sb.AppendLine($"Stalls (PSI some avg10): cpu {s.CpuStallPct:0.0}%  memory {s.MemStallPct:0.0}%  io {s.IoStallPct:0.0}%");
-        sb.AppendLine($"GPU {s.GpuName} {s.GpuPct:0.0}%  VRAM {Fmt.Bytes(s.VramUsed)} / {Fmt.Bytes(s.VramTotal)}");
+        sb.AppendLine($"GPU {s.GpuName} {s.GpuPct:0.0}%  VRAM {Fmt.Bytes(s.VramUsed)}{(s.VramTotal > 0 ? $" / {Fmt.Bytes(s.VramTotal)}" : " (shared with RAM)")}");
         foreach (var d in s.Disks) sb.AppendLine($"Disk {d.Name}: busy {d.BusyPct:0}%  {Fmt.Rate(d.Bps)}");
         foreach (var d in s.Drives) sb.AppendLine($"Drive {d.Name}: free {Fmt.Bytes(d.Free)} of {Fmt.Bytes(d.Total)}{(d.HasPagefile ? $" [{swap}]" : "")}");
         sb.AppendLine($"Bottleneck: {s.Bottleneck}");
