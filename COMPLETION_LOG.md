@@ -59,3 +59,16 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - macOS limits: no per-app GPU; no CPU temperature or clock on Apple Silicon; processes run by root or other users show zero CPU and RAM without root.
 - Linux could not be tested locally, because virtualization is disabled in this PC's firmware so WSL won't start.
 - Orbit: an amendment to the running #8543 was not delivered (agent disconnected). Queued follow-up orbit #8544 (depends on #8543) so Orbit reads the macOS and Linux feed paths and fields. It is pending review and approval.
+
+## PROMPT #5 — GitHub repo + CI on real macOS/Linux, Mac grouping fix
+**Status:** ✅ Shipped
+**Date:** 2026-11-17
+**Commit:** 9744389
+**Files changed:** src/PerfWidget.Core/Collector.cs, src/PerfWidget.Core/Fmt.cs, scripts/check-snapshot.ps1, .github/workflows/ci.yml
+**Notes:**
+- Follows up #4. With the user's OK, created the private repo Badmrpotatohead/PerfWidget and pushed. The first CI run passed on windows-latest, macos-latest (Apple Silicon) and ubuntu-latest, and all four packages built.
+- That real-runner run showed a macOS bug. The Python hog was folded into the runner's `hosted-compute-agent` daemon, because the Mac sampler followed launchd's "responsible process" link to a non-app. It now only follows that link to a real .app that isn't a launcher.
+- CI now also checks that the hog is listed under its own name. Merged via PR #1 after CI passed on all three OSes.
+- Report text now prints n/a for unknown clocks and "shared with RAM" for unified GPU memory. CI actions moved to v5 (Node 20 deprecation).
+- Orbit #8543 and #8544 both shipped to Orbit's master (macOS and Linux feed paths included). They take effect at Orbit's next restart, which was not done here.
+- Still not run on the user's own Mac. The .app is ad-hoc signed, not notarized, so Gatekeeper needs a right-click → Open the first time.
