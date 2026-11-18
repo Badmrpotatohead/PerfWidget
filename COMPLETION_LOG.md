@@ -85,3 +85,18 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - CI tests the published single-file sampler on Windows, macOS and Linux, including feed mode. Release sampler-v1.2.0 was published with SHA256SUMS. The Windows asset was downloaded independently; its hash matched and it ran.
 - Queued Orbit #8546 (pending review and approval): Orbit downloads the pinned, hash-checked sampler with gh, runs and supervises it, and shows the widget view on Settings → Developer.
 - The repo is private, so each machine's `gh` must be signed in to an account that can read it. Testers' machines would need the repo or release made public, or the sampler bundled into Orbit's installer.
+
+## PROMPT #7 — Bundle the sampler into Orbit
+**Status:** ⚠️ Partial (queued in Orbit, not yet run)
+**Date:** 2026-11-18
+**Commit:** see README commit below (README only; no PerfWidget code change)
+**Files changed:** README.md, COMPLETION_LOG.md
+**Notes:**
+- The user decided the sampler should be bundled into Orbit, so alpha testers can't hit the private-repo problem.
+- Orbit #8546 had already shipped (8cee18860) with a runtime `gh release download`, which fails on testers' machines.
+- Queued Orbit #8548 (queue row 13280, pending review and approval):
+  - Orbit's build step fetches and hash-checks the pinned asset, and packages only the target OS's binary.
+  - Installed Orbit runs the bundled copy and never calls gh.
+  - Source checkouts (how Orbit runs on the PC and Mac mini) keep the gh download.
+  - Release builds without the sampler fail.
+- Orbit installers are built by Dispatch on the operator's own machines, which can read the private repo, so the PerfWidget repo can stay private.
