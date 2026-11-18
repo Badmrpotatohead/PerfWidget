@@ -100,3 +100,15 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
   - Source checkouts (how Orbit runs on the PC and Mac mini) keep the gh download.
   - Release builds without the sampler fail.
 - Orbit installers are built by Dispatch on the operator's own machines, which can read the private repo, so the PerfWidget repo can stay private.
+
+## PROMPT #8 — Make the repo public
+**Status:** ✅ Shipped
+**Date:** 2026-11-18
+**Commit:** see README commit below (repo visibility change plus README; no code change)
+**Files changed:** README.md, COMPLETION_LOG.md
+**Notes:**
+- At the user's request, Badmrpotatohead/PerfWidget was made public.
+- The pre-check found no keys, tokens or passwords in the 42 tracked files. The user was told that the commit author email becomes visible.
+- No LICENSE file was added, so the code is visible but not licensed for reuse.
+- Confirmed anonymous HTTP 200 for the sampler-v1.2.0 release assets.
+- Orbit #8548 had already shipped, so Orbit #8551 (queue row 13283) was queued to replace `gh release download` with a plain HTTPS fetch, with the same pinned hashes. It is pending review and approval.

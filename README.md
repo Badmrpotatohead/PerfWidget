@@ -92,7 +92,7 @@ Layout: `src/PerfWidget.Core` is shared and holds the collector, grouping, alert
 - If the widget is open, the sampler sees a fresh feed from another live process and goes idle (~0% CPU) until the widget closes. The feed's `writer` field says which one wrote it.
 - It also takes `--json`, `--dump`, `--history` and `--version`. Measured on Windows: ~0.15% CPU and ~130 MB while feeding.
 - Releases: pushing a `sampler-vX.Y.Z` tag builds and tests it on all three OSes, then publishes `perfwidget-sampler-<rid>` archives with a `SHA256SUMS` file. Orbit pins the version and the sums.
-- How Orbit gets it: installed Orbit builds carry the sampler inside the installer (the build step fetches the pinned asset and checks its hash), so testers need no GitHub access. Orbit run from a source checkout downloads it with `gh` instead.
+- How Orbit gets it: installed Orbit builds carry the sampler inside the installer (the build step fetches the pinned asset and checks its hash), so testers need no download at all. Orbit run from a source checkout downloads the same pinned asset from this repo's public release page and checks its hash.
 
 ## Temperatures
 
