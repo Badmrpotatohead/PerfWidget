@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Hidden sampler: PerfWidget's collector with no window. Orbit downloads one per OS and runs it with
+       "feed" mode tied to Orbit's process, so every machine Orbit runs on has the same live feed and history. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>perfwidget-sampler</AssemblyName>
+    <RootNamespace>PerfWidget</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <Version>1.2.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PerfWidget.Core\PerfWidget.Core.csproj" />
+  </ItemGroup>
+
+</Project>

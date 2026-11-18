@@ -85,6 +85,14 @@ Layout: `src/PerfWidget.Core` is shared and holds the collector, grouping, alert
   - `apps[]`: up to 20 apps that matter (top by RAM, CPU, GPU and I/O). Each has {name, processes, cpuPct, maxThreadPct, ramBytes, commitBytes, gpuPct, vramBytes, ioBps}.
   - Within a version, fields are only ever added, never renamed or removed.
 
+## Hidden sampler (what Orbit runs)
+
+- `perfwidget-sampler` is the same collector with no window: one self-contained file per OS (~36 MB), nothing to install.
+- `perfwidget-sampler --feed --parent-pid <pid>` keeps `live.json` and history current exactly like the widget, and exits when that process exits. Orbit starts it with its own pid, so every machine Orbit runs on gets the feed with no widget open.
+- If the widget is open, the sampler sees a fresh feed from another live process and goes idle (~0% CPU) until the widget closes. The feed's `writer` field says which one wrote it.
+- It also takes `--json`, `--dump`, `--history` and `--version`. Measured on Windows: ~0.15% CPU and ~130 MB while feeding.
+- Releases: pushing a `sampler-vX.Y.Z` tag builds and tests it on all three OSes, then publishes `perfwidget-sampler-<rid>` archives with a `SHA256SUMS` file. Orbit pins the version and the sums.
+
 ## Temperatures
 
 - **GPU** (temperature, power, clocks, fan, throttle reasons): read from NVIDIA's NVML, which ships with the driver. No setup needed.
