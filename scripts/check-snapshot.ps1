@@ -36,6 +36,8 @@ $pinned = $apps | Where-Object { $_.maxThreadPct -ge 70 }
 Check (@($pinned).Count -ge 1) "single-thread detection sees the hog (maxThreadPct >= 70: $(@($pinned | ForEach-Object { "$($_.name) $($_.maxThreadPct)%" }) -join ', '))"
 $py = $apps | Where-Object { $_.ramBytes -ge 250MB -and $_.maxThreadPct -ge 70 }
 Check (@($py).Count -ge 1) "one app has both the hog's pinned thread and its 300 MB ($(@($py | ForEach-Object name) -join ', '))"
+# The hog was started by a CI script, so it must show up as Python, not folded into the runner's agent.
+Check (@($py | Where-Object { $_.name -match 'python' }).Count -ge 1) "the hog is listed under its own name, Python ($(@($py | ForEach-Object name) -join ', '))"
 
 Write-Host ""
 Write-Host "verdict: [$($j.verdict.severity)] $($j.verdict.title) $($j.verdict.detail)"
