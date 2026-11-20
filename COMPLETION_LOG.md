@@ -112,3 +112,18 @@ Append entries here after every prompt ships. See CLAUDE.md for format.
 - No LICENSE file was added, so the code is visible but not licensed for reuse.
 - Confirmed anonymous HTTP 200 for the sampler-v1.2.0 release assets.
 - Orbit #8548 had already shipped, so Orbit #8551 (queue row 13283) was queued to replace `gh release download` with a plain HTTPS fetch, with the same pinned hashes. It is pending review and approval.
+
+## PROMPT #9 — Orbit #8551 shipped: sampler over plain HTTPS
+**Status:** ✅ Shipped (in Orbit)
+**Date:** 2026-11-19
+**Commit:** Orbit 596c80bef (pushed to code-orbit master); no PerfWidget code change
+**Files changed:** COMPLETION_LOG.md
+**Notes:**
+- The user asked to run #8551 in a Claude Code session because Orbit's queue row was stuck on a dependency block.
+- A subagent built it in an Orbit session worktree.
+- Results:
+  - 50/50 sampler tests pass.
+  - A real Windows staging run with gh removed from PATH staged `perfwidget-sampler.exe` with the pinned SHA-256.
+- Not yet done, because Orbit was off:
+  - recording the completion in Orbit;
+  - cancelling queue row 13288.
